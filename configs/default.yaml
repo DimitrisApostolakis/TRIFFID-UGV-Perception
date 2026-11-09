@@ -82,7 +82,7 @@ tracker:
     geo_merge: true                # merge a new MASA track into a known nearby object of the same class
 
 position:
-  sources: [status, fix, api, fixed]          # priority; a source is used only while fresh
+  sources: [status, api, fix, fixed]          # priority (live order); a source is used only while fresh
   status_timeout_s: 3.0
   fix_timeout_s: 3.0
   fix_median_window: 3            # short: a long median lags the position while driving

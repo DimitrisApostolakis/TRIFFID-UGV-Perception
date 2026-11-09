@@ -1,9 +1,9 @@
 """Robot position and heading from several sources, in configured priority order.
 
-Position sources
+Position sources (default priority as on the live system)
   status   ugv_status_interfaces/UnitreeStatus latitude/longitude while gnss_valid (RTK fix)
-  fix      sensor_msgs/NavSatFix, median-filtered (a few-sample window rejects GNSS jumps)
   api      HTTP JSON polled in the background ({"message": {"latitude", "longitude", "gnss_valid"}})
+  fix      sensor_msgs/NavSatFix, median-filtered (a few-sample window rejects GNSS jumps)
   fixed    configured seed position (bench tests, static deployments)
 Heading sources
   magnetometer   std_msgs/Float32 compass heading in degrees (0 north, clockwise)

@@ -129,7 +129,8 @@ class TrackerConfig:
 
 @dataclass
 class PositionConfig:
-    sources: list[str] = field(default_factory=lambda: ['status', 'fix', 'api', 'fixed'])  # priority order
+    # Priority order, as on the live system: RTK status topic, the status API (same RTK-gated data), /fix.
+    sources: list[str] = field(default_factory=lambda: ['status', 'api', 'fix', 'fixed'])
     status_timeout_s: float = 3.0
     fix_timeout_s: float = 3.0
     fix_median_window: int = 3            # small: a long median lags the position while driving

@@ -54,8 +54,8 @@ object after the robot turns away. Run both on the same bag and compare (see
 
 ## Geolocation
 
-Position comes from `/b2/ugv_status` (RTK, while `gnss_valid`), `/fix` (median-filtered),
-the crispres status API or a fixed seed, in the configured priority order. Heading comes from the
+Position comes from `/b2/ugv_status` (RTK, while `gnss_valid`), the crispres status API, `/fix`
+(median-filtered) or a fixed seed, in the configured priority order. Heading comes from the
 magnetometer topic (degrees, compass) or `ugv_status.heading`. Each source is used only while fresh.
 Set `position.heading_offset_deg` to the local magnetic declination (≈ +5° in Greece) when the
 magnetometer is the heading source. The camera pose in `base_link` comes from TF when published,
