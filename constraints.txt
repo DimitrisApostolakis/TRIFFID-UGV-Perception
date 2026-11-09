@@ -1,0 +1,5 @@
+# Keep NumPy 1.x (ROS Jazzy message extensions) and a single headless OpenCV.
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+torch==2.7.0
+torchvision==0.22.0

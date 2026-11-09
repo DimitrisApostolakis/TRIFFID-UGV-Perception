@@ -1,0 +1,19 @@
+# Offline replay of the PUI rosbags (see docs/REPLAY.md). Only differences from the defaults are listed.
+#   - the recordings store the un-broadcast camera topics;
+#   - position comes from the bag's /fix (ugv_status never had RTK there) and NEVER from the live
+#     position API, which would place the recorded detections at the robot's current location;
+#   - the bags have no magnetometer: run scripts/replay_heading_from_yaw.py alongside.
+topics:
+  rgb: /b2/camera_front_435i/realsense_front_435i/color/image_raw
+  depth: /b2/camera_front_435i/realsense_front_435i/aligned_depth_to_color/image_raw
+position:
+  sources: [status, fix]
+camera:                          # the PUI recordings are 1280x720 (calibration from their CameraInfo)
+  fx: 910.3245849609375
+  fy: 910.1997680664062
+  cx: 645.7958984375
+  cy: 366.5615539550781
+  width: 1280
+  height: 720
+pipeline:
+  max_frame_age_s: 5.0

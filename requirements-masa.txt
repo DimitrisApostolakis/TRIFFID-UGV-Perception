@@ -1,0 +1,8 @@
+# Dependencies of mmcv / mmengine / mmdet / MASA installed without their opencv-python pin.
+addict
+rich
+termcolor
+yapf
+shapely
+terminaltables
+six

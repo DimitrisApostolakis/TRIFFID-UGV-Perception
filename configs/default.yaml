@@ -1,0 +1,131 @@
+# TRIFFID UGV perception - default live configuration.
+# Relative paths resolve against the working directory (/app in Docker).
+# Override any value on the command line:  --set detector.backend=sam3  --set api.enabled=true
+# Every key and its meaning: docs/CONFIGURATION.md
+
+paths:
+  outputs: outputs                 # GeoJSON, per-frame JSONL, annotated frames (one folder per run)
+  state: state                     # YOLOE prompt cache, map-API id map (keep between runs)
+  supports: supports               # support bank folder containing bank.json
+
+topics:                            # inputs from the UGV (ROS 2)
+  rgb: /b2/camera_front_435i/realsense_front_435i/color/image_raw_broadcasted
+  depth: /b2/camera_front_435i/realsense_front_435i/aligned_depth_to_color/image_raw_broadcasted
+  camera_info: ''                  # '' = <rgb namespace>/camera_info (used when published)
+  status: /b2/ugv_status           # UnitreeStatus: RTK position (+ GNSS heading); '' disables
+  fix: /fix                        # NavSatFix fallback position; '' disables
+  heading: /b2/nicla/magnetometer/heading_broadcasted   # Float32 compass degrees; '' disables
+  thermal: /b2/camera_flir/image_raw_broadcasted        # only for outputs.thermal snapshots
+  image_qos: reliable              # camera topics (large messages); small topics always use best_effort
+
+pipeline:
+  rate_hz: 1.0                     # frames processed per second (newest frame wins)
+  max_rgbd_dt_s: 0.25              # RGB/depth stamps must be this close
+  max_frame_age_s: 2.0
+
+camera:
+  intrinsics: auto                 # auto: CameraInfo if published, else fx/fy/cx/cy below | camera_info | config
+  fx: 606.883056640625             # RealSense D435i colour 640x480 (rescaled only for the same aspect ratio)
+  fy: 606.7998657226562
+  cx: 323.86395263671875
+  cy: 244.37435913085938
+  width: 640
+  height: 480
+  depth_scale: 0.001               # 16UC1 millimetres -> metres
+  min_depth_m: 0.3
+  max_depth_m: 20.0
+  extrinsics: auto                 # auto: TF if available, else static below | tf | static
+  body_frame: b2/base_link
+  static_translation_m: [0.392, 0.015, 0.279]   # camera position in base_link (from the robot's TF tree)
+  static_rpy_deg: [0.0, 0.0, 0.0]               # camera roll/pitch/yaw in base_link (x forward)
+  max_samples: 500
+
+detector:
+  backend: yoloe                   # yoloe (default) | sam3 | dummy
+  device: cuda
+  classes: auto                    # auto = classes with supports in the bank; or a list, e.g. [citizen, fire truck]
+  confidence: 0.35                 # minimum score to localize and export
+  min_mask_px: 30
+  max_per_frame: 100
+  yoloe:
+    checkpoint: /models/yoloe-v8l-seg.pt
+    image_size: 640
+    nms_iou: 0.5
+    candidate_floor: 0.1           # low-score candidates given to MASA for track recovery only
+    cache: yoloe_cache             # visual-prompt embedding cache, inside paths.state
+  sam3:
+    repo: /opt/fss-sam3
+    checkpoint: /models/sam3.pt    # same files as the UAV perception image
+    bpe: /models/bpe_simple_vocab_16e6.txt.gz
+    prompt: text                   # text (one encoding per frame) | visual | text+visual (one per class: slow)
+    precision: bf16                # bf16 | fp32. RTX 3060, bf16: 0.3 s per frame + 0.08 s per class
+    shots: 1                       # visual prompts: 1 or 5 supports per class
+    resolution: 1008
+    support_ratio_1shot: 0.6
+    support_ratio_5shot: 0.3
+
+tracker:
+  backend: geo                     # geo (default: association in metres) | masa (appearance, `masa` image)
+  min_hits: 2                      # sightings before an object is exported
+  max_age_s: 600                   # unseen objects stop being matched after this (they stay on the map)
+  class_groups:                    # labels that may be the same physical object (role is voted)
+    - [citizen, first responder, military personnel]
+  geo:
+    gate_m: 3.0
+    large_gate_m: 6.0
+    large_classes: [building, destroyed building, road, dirt road, pavement, wall, fence, green grass,
+                    dry grass, burnt grass, water, mud, debris, smoke]
+    position_alpha: 0.3
+  masa:
+    repo: /opt/masa
+    checkpoint: /models/masa_r50.pth
+    memory_s: 60
+    init_score: 0.35
+    match_score: 0.5
+    geo_merge: true                # merge a new MASA track into a known nearby object of the same class
+
+position:
+  sources: [status, fix, api, fixed]          # priority; a source is used only while fresh
+  status_timeout_s: 3.0
+  fix_timeout_s: 3.0
+  fix_median_window: 3            # short: a long median lags the position while driving
+  api_url: https://crispres.com/wp-json/mqtt/v1/latest
+  api_poll_s: 2.0
+  api_timeout_s: 3.0
+  fixed_lat: null
+  fixed_lon: null
+  fixed_alt: 0.0
+  heading_sources: [magnetometer, status, fixed]
+  heading_timeout_s: 3.0
+  status_heading_convention: compass   # compass: 0 north, clockwise (GNSS converter) | enu
+  heading_offset_deg: 0.0          # added to the heading: magnetic declination (+east) and mounting offset
+  fixed_heading_deg: null
+
+geometry:
+  line_classes: [fence, wall]      # exported as LineString
+  polygon_classes: []              # exported as Polygon (e.g. [building, water]); everything else is a Point
+  min_extent_m: 0.3
+  max_line_length_m: 30.0
+
+outputs:
+  geojson: true
+  observations: true
+  flush_period_s: 5.0
+  frames:
+    enabled: true
+    period_s: 1.0
+    save_empty: false
+  thermal:
+    enabled: false                 # optional FLIR debug snapshots
+    period_s: 1.0
+
+api:                               # crispres map manager (TELESTO)
+  enabled: false                   # turn on for the live system: --set api.enabled=true (see .env)
+  url: https://crispres.com/wp-json/map-manager/v1/features
+  flush_period_s: 5.0
+  timeout_s: 5.0
+  dedup_radius_m: 3.0
+  update_distance_m: 1.0
+  update_confidence_delta: 0.05
+  token_env: CRISPRES_API_TOKEN    # optional bearer token, read from this environment variable
+  source: ugv

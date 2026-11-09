@@ -1,0 +1,23 @@
+# Results, caches, support images, weights and bags are never committed.
+/outputs/*
+!/outputs/README.md
+/state/*
+!/state/README.md
+/supports/*
+!/supports/README.md
+/models/*
+!/models/README.md
+/bags/
+*.pt
+*.pth
+*.mcap
+*.db3
+.env
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/

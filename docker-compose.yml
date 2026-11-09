@@ -1,0 +1,66 @@
+# TRIFFID UGV perception (live ROS 2 node). Settings: .env (copy .env.example) and configs/default.yaml.
+#
+#   docker compose up -d ugv                     live: YOLOE + geo tracker  (logs: docker compose logs -f ugv)
+#   docker compose --profile masa up -d ugv-masa live with the MASA tracker (builds the `masa` image)
+#   docker compose run --rm ugv check            validate config, weights and supports
+#   docker compose --profile replay run --rm replay   play a recorded bag (BAG_PATH) to test offline
+#
+# Shares the machine with TRIFFID-UAV-Perception: point MODELS_DIR at the same folder to reuse sam3.pt.
+x-ugv: &ugv
+  image: triffid-ugv-perception:latest
+  build:
+    context: .
+    target: runtime
+  network_mode: host                 # ROS 2 discovery/data on the robot network
+  ipc: host                          # DDS shared-memory transport with local publishers
+  user: "${UGV_UID:-0}:${UGV_GID:-0}"
+  restart: unless-stopped
+  environment:
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+    RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    CYCLONEDDS_URI: file:///app/cyclonedds.xml
+    CRISPRES_API_TOKEN: ${CRISPRES_API_TOKEN:-}
+    HOME: /tmp
+  volumes:
+    - ./configs:/app/configs:ro
+    - ./scripts:/app/scripts:ro
+    - ./outputs:/app/outputs
+    - ./state:/app/state
+    - ${SUPPORTS_DIR:-./supports}:/app/supports:ro
+    - ${MODELS_DIR:-./models}:/models:ro
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  ugv:
+    <<: *ugv
+    container_name: triffid_ugv_perception
+    command: run --config ${UGV_CONFIG:-configs/default.yaml} --set api.enabled=${API_ENABLED:-false} ${UGV_ARGS:-}
+
+  ugv-masa:
+    <<: *ugv
+    profiles: [masa]
+    image: triffid-ugv-perception:masa
+    build:
+      context: .
+      target: masa
+    container_name: triffid_ugv_perception_masa
+    command: >-
+      run --config ${UGV_CONFIG:-configs/default.yaml} --set tracker.backend=masa
+      --set api.enabled=${API_ENABLED:-false} ${UGV_ARGS:-}
+
+  replay:                            # offline test: plays a bag onto the same ROS domain
+    <<: *ugv
+    profiles: [replay]
+    container_name: triffid_ugv_replay
+    restart: "no"
+    deploy: {}
+    volumes:
+      - ${BAG_PATH:-./bags}:/bag:ro
+    command: >-
+      ros2 bag play /bag --rate ${BAG_RATE:-1.0} ${BAG_ARGS:-}
