@@ -20,17 +20,14 @@ topics:                            # inputs from the UGV (ROS 2)
 
 pipeline:
   rate_hz: 1.0                     # frames processed per second (newest frame wins)
-  max_rgbd_dt_s: 0.25              # RGB/depth stamps must be this close
+  max_rgbd_dt_s: 1.0               # RGB/depth stamp gap allowed (ground-station broadcaster syncs with 1 s slop)
   max_frame_age_s: 2.0
 
 camera:
-  intrinsics: auto                 # auto: CameraInfo if published, else fx/fy/cx/cy below | camera_info | config
-  fx: 606.883056640625             # RealSense D435i colour 640x480 (rescaled only for the same aspect ratio)
-  fy: 606.7998657226562
-  cx: 323.86395263671875
-  cy: 244.37435913085938
-  width: 640
-  height: 480
+  intrinsics: auto                 # auto: CameraInfo if published, else `calibrations` | camera_info | config
+  calibrations:                    # [fx, fy, cx, cy] per image size; same-aspect sizes are rescaled
+    1280x720: [910.3245849609375, 910.1997680664062, 645.7958984375, 366.5615539550781]     # robot CameraInfo
+    640x480: [606.883056640625, 606.7998657226562, 323.86395263671875, 244.37435913085938]  # earlier live branch
   depth_scale: 0.001               # 16UC1 millimetres -> metres
   min_depth_m: 0.3
   max_depth_m: 20.0

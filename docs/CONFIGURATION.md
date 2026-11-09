@@ -19,7 +19,7 @@ API_ENABLED=true
 | `paths` | `outputs`, `state` (caches, API id map) and `supports` folders |
 | `topics` | every input topic name and the camera-topic QoS. `''` disables an input |
 | `pipeline` | processing rate (`rate_hz`), RGB/depth pairing tolerance, frame staleness |
-| `camera` | intrinsics source and fallback values, depth scale/range, extrinsics source and static mount |
+| `camera` | intrinsics source and the per-resolution `calibrations` table, depth scale/range, extrinsics source and static mount |
 | `detector` | backend (`yoloe`/`sam3`/`dummy`), classes, confidence, plus per-backend settings |
 | `tracker` | backend (`geo`/`masa`), confirmation hits, matching horizon, class groups, gates |
 | `position` | position/heading source priority, timeouts, heading convention and offset, fixed fallbacks |

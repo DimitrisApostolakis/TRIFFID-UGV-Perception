@@ -49,6 +49,17 @@ def test_robust_cluster_drops_background_leak():
     assert kept[:, 2].max() == pytest.approx(3.0)
 
 
+def test_calibration_table_by_image_size(tmp_path):
+    from triffid_ugv.config import load_config
+    from triffid_ugv.geometry import intrinsics_for_size
+    table = load_config(None, root=tmp_path).camera.calibrations
+    assert intrinsics_for_size(table, 1280, 720).fx == pytest.approx(910.32, abs=0.01)
+    assert intrinsics_for_size(table, 640, 360).cx == pytest.approx(645.80 / 2, abs=0.01)   # same aspect: rescaled
+    assert intrinsics_for_size(table, 640, 480).fx == pytest.approx(606.88, abs=0.01)
+    with pytest.raises(ValueError, match='No camera.calibrations entry'):
+        intrinsics_for_size(table, 1000, 1000)
+
+
 def test_camera_info_and_scaling():
     intr = intrinsics_from_camera_info([600, 0, 320, 0, 600, 240, 0, 0, 1], 640, 480)
     half = intr.scaled_to(320, 240)

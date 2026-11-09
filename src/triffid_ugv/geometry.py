@@ -36,10 +36,28 @@ class Intrinsics:
             return self
         if abs(width / height - self.width / self.height) > 0.01 * self.width / self.height:
             raise ValueError(f'Intrinsics are for {self.width}x{self.height} but the image is {width}x{height} '
-                             f'(different aspect ratio): publish CameraInfo or set camera.fx/fy/cx/cy/width/height')
+                             f'(different aspect ratio): publish CameraInfo or add the size to camera.calibrations')
         sx, sy = width / self.width, height / self.height
         return Intrinsics(self.fx * sx, self.fy * sy, self.cx * sx, self.cy * sy, width, height,
                           self.source + '+scaled')
+
+
+def intrinsics_for_size(calibrations: dict, width: int, height: int) -> Intrinsics:
+    """Configured intrinsics for an image size: exact entry, else a same-aspect entry rescaled."""
+    entries = []
+    for size, (fx, fy, cx, cy) in calibrations.items():
+        w, h = (int(v) for v in str(size).split('x'))
+        entries.append(Intrinsics(float(fx), float(fy), float(cx), float(cy), w, h, f'config {size}'))
+    for intr in entries:
+        if (intr.width, intr.height) == (width, height):
+            return intr
+    for intr in sorted(entries, key=lambda i: abs(i.width - width)):
+        try:
+            return intr.scaled_to(width, height)
+        except ValueError:
+            continue
+    raise ValueError(f'No camera.calibrations entry for {width}x{height} images (have {sorted(calibrations)}); '
+                     f'add one, or publish CameraInfo')
 
 
 def intrinsics_from_camera_info(k, width: int, height: int) -> Intrinsics:

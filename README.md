@@ -88,4 +88,4 @@ docker run --rm -v $PWD:/app -w /app --entrypoint python triffid-ugv-perception:
 ```
 
 Docs: [architecture](docs/ARCHITECTURE.md) · [configuration](docs/CONFIGURATION.md) ·
-[outputs and API](docs/OUTPUTS.md) · [testing with a bag](docs/REPLAY.md)
+[outputs and API](docs/OUTPUTS.md) · [ground station + broadcaster](docs/GROUND_STATION.md) · [testing with a bag](docs/REPLAY.md)

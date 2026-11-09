@@ -21,7 +21,7 @@ from sensor_msgs.msg import CameraInfo, Image, NavSatFix
 from std_msgs.msg import Float32
 
 from ..config import Config
-from ..geometry import Intrinsics, intrinsics_from_camera_info, rigid, rotation_from_quaternion, static_optical_to_body
+from ..geometry import intrinsics_for_size, intrinsics_from_camera_info, rigid, rotation_from_quaternion, static_optical_to_body
 from ..pipeline import Frame
 from ..position import PoseEstimator
 from .images import cdr_stamp_ns, depth_to_metres, image_to_bgr, stamp_ns
@@ -43,8 +43,6 @@ class UgvPerceptionNode(Node):
         self.pose.start_api()
         self.static_extrinsics = static_optical_to_body(config.camera.static_translation_m,
                                                         config.camera.static_rpy_deg)
-        self.config_intrinsics = Intrinsics(config.camera.fx, config.camera.fy, config.camera.cx, config.camera.cy,
-                                            config.camera.width, config.camera.height, 'config')
         self.camera_info = None
         self.rgb = deque(maxlen=30)           # (stamp_ns, serialized Image, received monotonic)
         self.depth = deque(maxlen=30)         # (stamp_ns, serialized Image)
@@ -141,7 +139,7 @@ class UgvPerceptionNode(Node):
         if mode == 'camera_info':
             return None
         try:
-            return self.config_intrinsics.scaled_to(width, height)
+            return intrinsics_for_size(self.config.camera.calibrations, width, height)
         except ValueError as error:
             self._warn('intrinsics', str(error), 30.0)
             return None

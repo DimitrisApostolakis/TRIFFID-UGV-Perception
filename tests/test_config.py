@@ -20,7 +20,8 @@ def test_overrides_and_paths(tmp_path):
 
 
 @pytest.mark.parametrize('override', ['detector.backend=yolo', 'tracker.backend=bytetrack', 'nope.key=1',
-                                      'position.fixed_lat=38.0', 'pipeline.rate_hz=0'])
+                                      'position.fixed_lat=38.0', 'pipeline.rate_hz=0',
+                                      'camera.calibrations={1280x720: [1, 2, 3]}'])
 def test_invalid_values_rejected(tmp_path, override):
     with pytest.raises(ValueError):
         load_config(None, [override], root=tmp_path)

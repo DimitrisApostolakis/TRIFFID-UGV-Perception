@@ -37,19 +37,18 @@ class TopicsConfig:
 @dataclass
 class PipelineConfig:
     rate_hz: float = 1.0                  # frames processed per second; the newest frame wins
-    max_rgbd_dt_s: float = 0.25           # largest RGB/depth stamp difference accepted
+    max_rgbd_dt_s: float = 1.0            # largest RGB/depth stamp gap (the broadcaster bundles them with 1 s slop)
     max_frame_age_s: float = 2.0          # skip frames older than this (wall clock vs receipt)
 
 
 @dataclass
 class CameraConfig:
-    intrinsics: str = 'auto'              # auto: CameraInfo when received, else the values below | camera_info | config
-    fx: float = 606.883056640625          # RealSense D435i colour, 640x480 (live branch values)
-    fy: float = 606.7998657226562
-    cx: float = 323.86395263671875
-    cy: float = 244.37435913085938
-    width: int = 640                      # rescaled for another size with the same aspect ratio only
-    height: int = 480
+    intrinsics: str = 'auto'              # auto: CameraInfo when received, else `calibrations` | camera_info | config
+    # Pinhole [fx, fy, cx, cy] per image size "WxH" (the ground-station broadcaster sends no CameraInfo).
+    # The entry matching the image size is used; another size with the same aspect ratio is rescaled.
+    calibrations: dict[str, list[float]] = field(default_factory=lambda: {
+        '1280x720': [910.3245849609375, 910.1997680664062, 645.7958984375, 366.5615539550781],  # robot CameraInfo
+        '640x480': [606.883056640625, 606.7998657226562, 323.86395263671875, 244.37435913085938]})  # live branch
     depth_scale: float = 0.001            # 16UC1 depth units -> metres
     min_depth_m: float = 0.3
     max_depth_m: float = 20.0
@@ -221,7 +220,6 @@ class Config:
         for source in self.position.heading_sources:
             choice(source, {'magnetometer', 'status', 'fixed'}, 'position.heading_sources[]')
         positive = {'pipeline.rate_hz': self.pipeline.rate_hz, 'pipeline.max_rgbd_dt_s': self.pipeline.max_rgbd_dt_s,
-                    'camera.fx': self.camera.fx, 'camera.fy': self.camera.fy,
                     'camera.depth_scale': self.camera.depth_scale, 'tracker.geo.gate_m': self.tracker.geo.gate_m,
                     'outputs.flush_period_s': self.outputs.flush_period_s, 'api.flush_period_s': self.api.flush_period_s}
         for name, value in positive.items():
@@ -233,6 +231,10 @@ class Config:
             raise ValueError('tracker.geo.position_alpha must be in (0, 1]')
         if self.tracker.min_hits < 1:
             raise ValueError('tracker.min_hits must be at least 1')
+        for size, values in self.camera.calibrations.items():
+            w, _, h = str(size).partition('x')
+            if not (w.isdigit() and h.isdigit()) or len(values) != 4 or min(values[:2]) <= 0:
+                raise ValueError(f'camera.calibrations entries must be "WxH": [fx, fy, cx, cy], got {size}: {values}')
         if len(self.camera.static_translation_m) != 3 or len(self.camera.static_rpy_deg) != 3:
             raise ValueError('camera.static_translation_m and static_rpy_deg need three values')
         if (self.position.fixed_lat is None) != (self.position.fixed_lon is None):
