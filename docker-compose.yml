@@ -13,10 +13,10 @@ x-ugv: &ugv
     target: runtime
   network_mode: host                 # ROS 2 discovery/data on the robot network
   ipc: host                          # DDS shared-memory transport with local publishers
-  user: "${UGV_UID:-0}:${UGV_GID:-0}"
+  user: "${UGV_UID:-1000}:${UGV_GID:-1000}"
   restart: unless-stopped
   environment:
-    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
     RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
     CYCLONEDDS_URI: file:///app/cyclonedds.xml
     CRISPRES_API_TOKEN: ${CRISPRES_API_TOKEN:-}
