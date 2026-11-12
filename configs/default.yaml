@@ -20,7 +20,7 @@ topics:                            # inputs from the UGV (ROS 2)
 
 pipeline:
   rate_hz: 1.0                     # frames processed per second (newest frame wins)
-  max_rgbd_dt_s: 1.0               # RGB/depth stamp gap allowed (ground-station broadcaster syncs with 1 s slop)
+  max_rgbd_dt_s: 1.5               # RGB/depth stamp gap allowed: broadcaster's 1 s bundle slop + margin (< ~3 s bundle spacing)
   max_frame_age_s: 2.0
 
 camera:

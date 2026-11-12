@@ -37,7 +37,8 @@ class TopicsConfig:
 @dataclass
 class PipelineConfig:
     rate_hz: float = 1.0                  # frames processed per second; the newest frame wins
-    max_rgbd_dt_s: float = 1.0            # largest RGB/depth stamp gap (the broadcaster bundles them with 1 s slop)
+    max_rgbd_dt_s: float = 1.5            # largest RGB/depth stamp gap: broadcaster bundle slop (1 s) + margin,
+                                          # well below the ~3 s between live bundles (never pairs the previous bundle)
     max_frame_age_s: float = 2.0          # skip frames older than this (wall clock vs receipt)
 
 

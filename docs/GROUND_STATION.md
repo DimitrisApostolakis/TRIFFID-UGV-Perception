@@ -25,8 +25,9 @@ Not broadcast, and how the node copes:
 
 Rate: the broadcaster sends at most 2 bundles/s, and fewer on a slow link, because the TCP transfer
 waits for an acknowledgement after every 4 kB chunk. The node always processes the newest bundle, so
-any rate works. RGB and depth of a bundle can be up to 1 s apart (synchroniser slop), which
-`pipeline.max_rgbd_dt_s: 1.0` accepts.
+any rate works (measured live: one bundle every ~3 s). RGB and depth of a bundle can be up to 1 s apart
+(synchroniser slop); `pipeline.max_rgbd_dt_s: 1.5` accepts that with margin while staying well below the
+bundle spacing, so an RGB frame is never paired with the previous bundle's depth.
 
 Checklist on the ground station:
 
