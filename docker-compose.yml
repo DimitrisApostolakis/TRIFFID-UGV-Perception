@@ -1,11 +1,11 @@
 # TRIFFID UGV perception (live ROS 2 node). Settings: .env (copy .env.example) and configs/default.yaml.
 #
-#   docker compose up -d ugv                     live: YOLOE + geo tracker  (logs: docker compose logs -f ugv)
-#   docker compose --profile masa up -d ugv-masa live with the MASA tracker (builds the `masa` image)
+#   docker compose up -d ugv                     live: YOLOE + SIFT tracker  (logs: docker compose logs -f ugv)
+#   docker compose --profile masa up -d ugv-masa live with the MASA fallback tracker (builds the `masa` image)
 #   docker compose run --rm ugv check            validate config, weights and supports
 #   docker compose --profile replay run --rm replay   play a recorded bag (BAG_PATH) to test offline
 #
-# Shares the machine with TRIFFID-UAV-Perception: point MODELS_DIR at the same folder to reuse sam3.pt.
+# Run only one of `ugv` / `ugv-masa` at a time: both subscribe to the same topics and write to outputs/.
 x-ugv: &ugv
   image: triffid-ugv-perception:latest
   build:

@@ -1,10 +1,11 @@
-"""MASA-R50 appearance tracker (optional, `tracker.backend: masa`; needs the `masa` Docker target).
+"""MASA-R50 appearance tracker (fallback to SIFT, `tracker.backend: masa`; needs the `masa` Docker target).
 
 MASA associates the detector's boxes by learned instance appearance, so an object can be re-found
 after the robot turns away and back. Its track IDs are passed to the world map as *hints*: a hinted
 object keeps its identity even when its geo position is noisy, and (with `masa.geo_merge`) a new MASA
 track that appears on top of a known object of the same class is merged into it instead of creating
-a duplicate.
+a duplicate. Use it when SIFT keeps too few identities (textureless objects, large viewpoint changes);
+it costs ~200 ms of GPU per frame and a separate image.
 
 Setup follows the evaluated live profile: plug-and-play R50 config, external detections, 1 fps,
 category gate (patched in the Docker image), init score 0.35, recovery down to the detector's floor.
@@ -30,8 +31,9 @@ _PERSON_SENTINEL = 10000
 
 class MasaTracker:
     name = 'masa'
+    uses_candidates = True               # low-score YOLOE candidates help recover tracks
 
-    def __init__(self, config: MasaConfig, recovery_floor: float = 0.1, device: str = 'cuda'):
+    def __init__(self, config: MasaConfig, class_groups=(), recovery_floor: float = 0.1, device: str = 'cuda'):
         import torch
         from mmengine.config import Config
         from mmdet.registry import MODELS
@@ -68,6 +70,7 @@ class MasaTracker:
         self.model.to(device).eval().requires_grad_(False)
         self.torch, self.memory_s = torch, int(config.memory_s)
         self.first_ns = self.last_ns = None
+        self.groups = masa_label_groups(class_groups)
         self.info = dict(name='masa_r50', checkpoint=str(checkpoint), checkpoint_sha256=sha256_file(checkpoint),
                          memory_s=self.memory_s, init_score=config.init_score, recovery_floor=recovery_floor,
                          match_score=config.match_score, category_gate=True, geo_merge=config.geo_merge)
@@ -75,7 +78,7 @@ class MasaTracker:
     def metadata(self) -> dict:
         return dict(self.info)
 
-    def update(self, detections, bgr: np.ndarray, stamp_ns: int, groups=None) -> list[tuple[int, str]]:
+    def update(self, detections, bgr: np.ndarray, stamp_ns: int) -> list[tuple[int, str]]:
         """Track candidate detections; returns (index into `detections`, track id) for tracked ones."""
         from mmdet.structures import DetDataSample, TrackDataSample
         torch = self.torch
@@ -100,7 +103,7 @@ class MasaTracker:
         sample = DetDataSample(metainfo=dict(frame_id=int(tick), ori_shape=(h, w), img_shape=(nh, nw),
                                              scale_factor=(nw / w, nh / h)))
         sample.det_bboxes = torch.tensor([[*d.bbox, d.score] for d in detections], device=self.device)
-        labels = [(groups or {}).get(d.class_name, d.class_id) for d in detections]
+        labels = [self.groups.get(d.class_name, d.class_id) for d in detections]
         sample.det_labels = torch.tensor(labels, device=self.device)
         with torch.inference_mode():
             output = self.model.predict(tensor[None, None], [TrackDataSample(video_data_samples=[sample])])

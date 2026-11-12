@@ -6,3 +6,5 @@ yapf
 shapely
 terminaltables
 six
+einops            # masa/models/necks/deform_fusion.py
+pycocotools       # mmdet.datasets (imported by register_all_modules)

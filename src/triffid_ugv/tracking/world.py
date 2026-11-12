@@ -1,4 +1,4 @@
-"""World map of detected objects with geo-space association (the default 1 Hz tracker).
+"""World map of detected objects: geo-space association, fed by appearance hints (SIFT or MASA).
 
 At one frame per second on a moving robot, image boxes of the same object barely overlap between
 frames, so pixel trackers (IoU / Kalman in image space) fragment identities. Here every observation
@@ -10,8 +10,9 @@ is first placed in a local ENU plane (metres) and then matched to known objects:
   point-to-polygon for polygon classes, gated by `gate_m` (`large_gate_m` for extended classes);
 * one frame's observations are assigned jointly (Hungarian), so two people standing 1 m apart in
   the same frame never collapse into one object;
-* an optional per-observation `hint` (an image-tracker ID such as MASA's) is honoured first and
-  remembered, so appearance tracking and geo association can be combined.
+* an optional per-observation `hint` (an appearance-tracker ID from SIFT or MASA) is honoured first and
+  remembered, as long as the observation lies within `hint_gate_m` of the hinted object, so appearance
+  tracking and geo association are combined.
 
 Objects are exported once they have `min_hits` sightings; they stop being *matched* after
 `max_age_s` without a sighting but stay on the map.
@@ -116,7 +117,7 @@ class ObjectMap:
         for index, group in enumerate(tracker.class_groups):
             for name in group:
                 self._group[name] = f'group{index}'
-        self.use_geo = tracker.backend == 'geo' or tracker.masa.geo_merge
+        self.use_geo = tracker.backend != 'masa' or tracker.masa.geo_merge
 
     # ---- association helpers ------------------------------------------------------------------
     def group(self, class_name: str) -> str:
@@ -148,18 +149,20 @@ class ObjectMap:
     # ---- update -------------------------------------------------------------------------------
     def update(self, observations: list[Observation], now_ns: int) -> list[Observation]:
         """Assign every observation to an object (new or existing); returns them with object_id set."""
-        pending = []
+        pending, claimed = [], set()
+        hint_gate = self.config.hint_gate_m
         for obs in observations:
             target = self._hint_to_object.get(obs.hint) if obs.hint else None
             obj = self.objects.get(target) if target else None
-            if obj is not None and self.group(obj.class_name) == self.group(obs.class_name):
+            if (obj is not None and obj.id not in claimed and self.group(obj.class_name) == self.group(obs.class_name)
+                    and (hint_gate <= 0 or self.distance(obs, obj) <= hint_gate)):
                 self._apply(obj, obs)
+                claimed.add(obj.id)
             else:
                 pending.append(obs)
 
         if pending and self.use_geo:
-            candidates = [o for o in self.active(now_ns)
-                          if not any(o.id == x.object_id for x in observations)]
+            candidates = [o for o in self.active(now_ns) if o.id not in claimed]
             if candidates:
                 cost = np.full((len(pending), len(candidates)), _INFEASIBLE)
                 for i, obs in enumerate(pending):

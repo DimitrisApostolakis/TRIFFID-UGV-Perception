@@ -36,7 +36,7 @@ class YoloeDetector:
         det, cfg = config.detector, config.detector.yoloe
         self.torch, self.device = torch, det.device
         self.size, self.confidence = int(cfg.image_size), float(det.confidence)
-        # Low-score candidates only help MASA recover tracks; the geo tracker never sees them.
+        # Low-score candidates only help MASA recover tracks; SIFT and the map never see them.
         self.floor = min(float(cfg.candidate_floor), self.confidence) if config.tracker.backend == 'masa' else self.confidence
         self.nms, self.min_mask_px, self.max_per_frame = float(cfg.nms_iou), det.min_mask_px, det.max_per_frame
         checkpoint = Path(cfg.checkpoint)

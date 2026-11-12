@@ -7,15 +7,16 @@ those topics. The defaults in `configs/default.yaml` already use these names.
 
 | Broadcast topic (ground station) | Content as received | Used for |
 |---|---|---|
-| `/b2/camera_front_435i/realsense_front_435i/color/image_raw_broadcasted` | `rgb8`, 1280x720, JPEG q80 round-trip | detection |
+| `/b2/camera_front_435i/realsense_front_435i/color/image_raw_broadcasted` | `rgb8`, 640x480 on the live system, JPEG q80 round-trip | detection |
 | `/b2/camera_front_435i/realsense_front_435i/aligned_depth_to_color/image_raw_broadcasted` | `16UC1` mm, normalised by frame max + JPEG (≈60 mm median error) | localisation |
 | `/b2/nicla/magnetometer/heading_broadcasted` | `std_msgs/Float32`, compass degrees | heading |
-| `/b2/camera_flir/image_raw_broadcasted` | `rgb8` | optional thermal snapshots |
+| `/b2/camera_flir/image_raw_broadcasted` | `rgb8` | debug recording only (`debug.thermal`) |
 
 Not broadcast, and how the node copes:
 
-* **CameraInfo**: intrinsics come from `camera.calibrations` by image size. 1280x720 is the robot's own
-  calibration; 640x480 is included too.
+* **CameraInfo**: intrinsics come from `camera.calibrations` by image size. The live stream is 640x480
+  (the same intrinsics as the earlier live node); 1280x720 is the recorded bags' calibration. A CameraInfo
+  with another aspect ratio than the images (e.g. the robot driver's 1280x720) is ignored in `auto` mode.
 * **TF**: the camera pose comes from `camera.static_*`, measured from the robot's TF tree.
 * **Position**: `/b2/ugv_status` if it reaches the ground station, otherwise the crispres position API
   (both in `position.sources`). The API reports the robot's position *now*, while images arrive after

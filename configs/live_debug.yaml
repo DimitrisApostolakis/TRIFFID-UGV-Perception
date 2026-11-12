@@ -1,0 +1,9 @@
+# Live test with debug recording (see docs/DEBUG.md). Only differences from the defaults are listed.
+# Every processed frame is saved as a set under outputs/<session>/debug/:
+#   rgb/  depth/ (16-bit mm PNG)  depth_color/  thermal/  overlay/
+# Disk use depends on the scene; check with `du -sh outputs/*/debug`. Recording stops below debug.min_free_gb.
+debug:
+  enabled: true
+outputs:
+  frames:
+    enabled: false                 # debug/overlay/ already holds every annotated frame

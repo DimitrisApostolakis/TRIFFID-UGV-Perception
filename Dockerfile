@@ -3,8 +3,8 @@
 #
 # Stages
 #   base               ROS 2 + PyTorch + Python dependencies (shared)
-#   runtime (default)  YOLOE-v8-L (visual supports) + SAM3 option + geo-space tracker
-#   masa               runtime + MASA-R50 tracker (builds mmcv CUDA ops; slow first build)
+#   runtime (default)  YOLOE-v8-L (visual supports) + SIFT appearance hints + geo-space association
+#   masa               runtime + MASA-R50 fallback tracker (builds mmcv CUDA ops; slow first build)
 #
 # Weights and the support bank are mounted at run time, never baked in.
 # CUDA 12.8 PyTorch wheels cover Turing..Blackwell (RTX 20xx-50xx); needs NVIDIA driver >= 570.
@@ -47,12 +47,6 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install -c /tmp/req/constrain
  && pip uninstall -y opencv-python opencv-contrib-python 2>/dev/null; \
     pip install --force-reinstall --no-deps -c /tmp/req/constraints.txt opencv-python-headless
 
-# SAM3 (optional detector): FSS-SAM3 source checkout, the same pin the UAV perception image uses.
-ARG FSS_SAM3_REPO=https://github.com/WongKinYiu/FSS-SAM3.git
-ARG FSS_SAM3_REF=b82ba838678ae8c2f27f618d9500a50c171e223e
-RUN git clone --filter=blob:none "${FSS_SAM3_REPO}" /opt/fss-sam3 \
- && git -C /opt/fss-sam3 checkout -q "${FSS_SAM3_REF}"
-
 # Robot message packages (ugv_status_interfaces, gnss_converter_interfaces), built with the system toolchain.
 COPY interfaces /opt/triffid_ws/src
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
@@ -64,7 +58,8 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 COPY configs ./configs
 COPY cyclonedds.xml ./
-RUN pip install --no-cache-dir --no-deps . && python -c "import numpy, cv2, torch; assert numpy.__version__.startswith('1.')"
+RUN pip install --no-cache-dir --no-deps . \
+ && python -c "import numpy, cv2, torch; assert numpy.__version__.startswith('1.'); cv2.SIFT_create()"
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && mkdir -p /app/outputs /app/state /app/supports /models \
  && chmod 1777 /app/outputs /app/state /tmp

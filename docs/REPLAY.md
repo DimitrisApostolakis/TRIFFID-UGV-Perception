@@ -37,5 +37,5 @@ their `/fix` is plain GNSS at 1 Hz, and the only heading available is odometry y
 north. In the PUI bag a static cone's computed position drifts by ~17 m while the robot approaches it,
 so one physical object becomes several map objects. On the robot, RTK `ugv_status` plus the
 magnetometer avoid this. To evaluate tracking, record a bag with `ugv_status` (RTK) and the
-`heading_broadcasted` topic, then compare `tracker.backend: geo` and `masa` on it
+`heading_broadcasted` topic, then compare `tracker.backend: sift` and `masa` on it
 (see [ARCHITECTURE.md](ARCHITECTURE.md#comparing-trackers)).

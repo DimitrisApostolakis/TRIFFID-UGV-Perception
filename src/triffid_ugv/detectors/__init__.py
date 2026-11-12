@@ -8,9 +8,6 @@ def create_detector(config: Config) -> Detector:
     if backend == 'yoloe':
         from .yoloe import YoloeDetector
         return YoloeDetector(config)
-    if backend == 'sam3':
-        from .sam3 import Sam3Detector
-        return Sam3Detector(config)
     if backend == 'dummy':
         from .dummy import DummyDetector
         classes = config.detector.classes

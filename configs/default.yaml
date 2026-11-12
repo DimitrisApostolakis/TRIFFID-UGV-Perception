@@ -1,6 +1,6 @@
 # TRIFFID UGV perception - default live configuration.
 # Relative paths resolve against the working directory (/app in Docker).
-# Override any value on the command line:  --set detector.backend=sam3  --set api.enabled=true
+# Override any value on the command line:  --set tracker.backend=masa  --set api.enabled=true
 # Every key and its meaning: docs/CONFIGURATION.md
 
 paths:
@@ -15,7 +15,7 @@ topics:                            # inputs from the UGV (ROS 2)
   status: /b2/ugv_status           # UnitreeStatus: RTK position (+ GNSS heading); '' disables
   fix: /fix                        # NavSatFix fallback position; '' disables
   heading: /b2/nicla/magnetometer/heading_broadcasted   # Float32 compass degrees; '' disables
-  thermal: /b2/camera_flir/image_raw_broadcasted        # only for outputs.thermal snapshots
+  thermal: /b2/camera_flir/image_raw_broadcasted        # subscribed only for debug.thermal
   image_qos: reliable              # camera topics (large messages); small topics always use best_effort
 
 pipeline:
@@ -27,7 +27,7 @@ camera:
   intrinsics: auto                 # auto: CameraInfo if published, else `calibrations` | camera_info | config
   calibrations:                    # [fx, fy, cx, cy] per image size; same-aspect sizes are rescaled
     1280x720: [910.3245849609375, 910.1997680664062, 645.7958984375, 366.5615539550781]     # robot CameraInfo
-    640x480: [606.883056640625, 606.7998657226562, 323.86395263671875, 244.37435913085938]  # earlier live branch
+    640x480: [606.883056640625, 606.7998657226562, 323.86395263671875, 244.37435913085938]  # live broadcast stream
   depth_scale: 0.001               # 16UC1 millimetres -> metres
   min_depth_m: 0.3
   max_depth_m: 20.0
@@ -38,7 +38,7 @@ camera:
   max_samples: 500
 
 detector:
-  backend: yoloe                   # yoloe (default) | sam3 | dummy
+  backend: yoloe                   # yoloe (YOLOE-v8-L, visual prompts) | dummy (wiring tests)
   device: cuda
   classes: auto                    # auto = classes with supports in the bank; or a list, e.g. [citizen, fire truck]
   confidence: 0.35                 # minimum score to localize and export
@@ -50,29 +50,30 @@ detector:
     nms_iou: 0.5
     candidate_floor: 0.1           # low-score candidates given to MASA for track recovery only
     cache: yoloe_cache             # visual-prompt embedding cache, inside paths.state
-  sam3:
-    repo: /opt/fss-sam3
-    checkpoint: /models/sam3.pt    # same files as the UAV perception image
-    bpe: /models/bpe_simple_vocab_16e6.txt.gz
-    prompt: text                   # text (one encoding per frame) | visual | text+visual (one per class: slow)
-    precision: bf16                # bf16 | fp32. RTX 3060, bf16: 0.3 s per frame + 0.08 s per class
-    shots: 1                       # visual prompts: 1 or 5 supports per class
-    resolution: 1008
-    support_ratio_1shot: 0.6
-    support_ratio_5shot: 0.3
 
 tracker:
-  backend: geo                     # geo (default: association in metres) | masa (appearance, `masa` image)
+  backend: sift                    # sift (default: CPU keypoints) | masa (fallback: learned appearance, `masa` image)
   min_hits: 2                      # sightings before an object is exported
   max_age_s: 600                   # unseen objects stop being matched after this (they stay on the map)
   class_groups:                    # labels that may be the same physical object (role is voted)
     - [citizen, first responder, military personnel]
+  hint_gate_m: 10.0                # an appearance match is trusted only this close to its object (0 = any distance)
   geo:
     gate_m: 3.0
     large_gate_m: 6.0
     large_classes: [building, destroyed building, road, dirt road, pavement, wall, fence, green grass,
                     dry grass, burnt grass, water, mud, debris, smoke]
     position_alpha: 0.3
+  sift:                            # appearance hints; geo association still handles everything else
+    max_features: 200              # keypoints per detection
+    max_side_px: 320               # crops are downscaled to this longer side first
+    min_side_px: 24                # smaller detections: geo association only
+    min_keypoints: 12              # textureless detections: geo association only
+    ratio: 0.75                    # Lowe ratio test
+    min_matches: 10                # verified matches needed to continue a track
+    ransac_px: 6.0                 # homography RANSAC threshold in crop pixels; 0 = ratio test only
+    gallery_size: 4                # most recent views kept per track
+    memory_s: 60.0                 # how long a lost track can be recovered by appearance
   masa:
     repo: /opt/masa
     checkpoint: /models/masa_r50.pth
@@ -112,9 +113,23 @@ outputs:
     enabled: true
     period_s: 1.0
     save_empty: false
-  thermal:
-    enabled: false                 # optional FLIR debug snapshots
-    period_s: 1.0
+
+debug:                             # live-test recording (configs/live_debug.yaml turns it on)
+  enabled: false                   # outputs/<session>/debug/{rgb,depth,depth_color,thermal,overlay}/<stamp>.*
+  folder: debug                    # inside the session folder
+  period_s: 0.0                    # 0 = every processed frame; else at most one set per period
+  save_empty: true                 # also frames without detections
+  rgb: true                        # JPEG, as processed
+  depth: true                      # 16-bit PNG, millimetres (lossless, reloadable)
+  depth_color: true                # colourised JPEG for viewing
+  depth_color_max_m: 10.0          # far end of the colour scale (near end: camera.min_depth_m)
+  thermal: true                    # newest FLIR frame near the RGB stamp (subscribes to topics.thermal)
+  thermal_max_dt_s: 1.0
+  overlay: true                    # masks, boxes, class, score, object number, range, pose header
+  jpeg_quality: 90
+  queue_size: 8                    # background writer backlog; sets beyond it are dropped, never block
+  max_sets: 0                      # stop after N sets (0 = unlimited)
+  min_free_gb: 2.0                 # stop when the outputs disk runs low
 
 api:                               # crispres map manager (TELESTO)
   enabled: false                   # turn on for the live system: --set api.enabled=true (see .env)

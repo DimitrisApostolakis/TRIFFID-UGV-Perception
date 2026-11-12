@@ -59,9 +59,15 @@ def test_confirmation_and_expiry(world):
 
 
 def test_hints_link_identity_beyond_gate(world):
-    world.update([obs('citizen', 0, 0, 0, hint='masa:7')], 0)
-    world.update([obs('citizen', 9, 0, 1, hint='masa:7')], S)
+    world.update([obs('citizen', 0, 0, 0, hint='sift:7')], 0)
+    world.update([obs('citizen', 9, 0, 1, hint='sift:7')], S)
     assert len(world.objects) == 1
+
+
+def test_hints_ignored_beyond_hint_gate(world):
+    world.update([obs('citizen', 0, 0, 0, hint='sift:7')], 0)
+    world.update([obs('citizen', 25, 0, 1, hint='sift:7')], S)      # same look, 25 m away: another person
+    assert len(world.objects) == 2
 
 
 def test_fence_becomes_a_growing_line(world):

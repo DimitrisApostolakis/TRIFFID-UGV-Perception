@@ -20,7 +20,7 @@ def _config_options(parser):
     parser.add_argument('--config', default='configs/default.yaml', help='YAML config (default: %(default)s)')
     parser.add_argument('--root', help='Folder that relative config paths resolve against (default: CWD)')
     parser.add_argument('--set', dest='overrides', action='append', default=[], metavar='SECTION.KEY=VALUE',
-                        help='Override a config value, e.g. --set detector.backend=sam3 (repeatable)')
+                        help='Override a config value, e.g. --set tracker.backend=masa (repeatable)')
 
 
 def build_parser():
@@ -40,11 +40,7 @@ def check(config) -> list[str]:
     det = config.detector
     if det.backend == 'yoloe' and not Path(det.yoloe.checkpoint).is_file():
         problems.append(f'YOLOE checkpoint missing: {det.yoloe.checkpoint}')
-    if det.backend == 'sam3':
-        for path in (det.sam3.checkpoint, det.sam3.bpe, Path(det.sam3.repo) / 'sam3/model_builder.py'):
-            if not Path(path).is_file():
-                problems.append(f'SAM3 file missing: {path}')
-    needs_bank = det.backend == 'yoloe' or (det.backend == 'sam3' and (det.sam3.prompt != 'text'))
+    needs_bank = det.backend == 'yoloe'
     if needs_bank or det.classes in ('auto', '', None):
         from .supports import SupportBank
         try:

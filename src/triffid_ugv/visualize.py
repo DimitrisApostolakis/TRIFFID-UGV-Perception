@@ -1,4 +1,4 @@
-"""Annotated debug frames: mask tint, box, class, score, object id and range."""
+"""Debug images: annotated frames (mask tint, box, class, score, object id, range) and colourised depth."""
 from __future__ import annotations
 
 import cv2
@@ -37,4 +37,17 @@ def draw(bgr: np.ndarray, items: list[dict], header: str = '') -> np.ndarray:
     if header:
         cv2.rectangle(canvas, (0, 0), (canvas.shape[1], 20), (0, 0, 0), -1)
         cv2.putText(canvas, header, (4, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+    return canvas
+
+
+def colorize_depth(depth_m: np.ndarray, near_m: float, far_m: float) -> np.ndarray:
+    """Depth in metres -> BGR (TURBO: near blue, far red); invalid pixels black, with a scale label."""
+    valid = np.isfinite(depth_m) & (depth_m > 0)
+    scaled = np.clip((np.nan_to_num(depth_m) - near_m) / max(far_m - near_m, 1e-6), 0, 1)
+    canvas = cv2.applyColorMap((scaled * 255).astype(np.uint8), cv2.COLORMAP_TURBO)
+    canvas[~valid] = 0
+    coverage = 100.0 * valid.mean() if valid.size else 0.0
+    label = f'depth {near_m:g}-{far_m:g} m | valid {coverage:.0f}%'
+    cv2.rectangle(canvas, (0, 0), (canvas.shape[1], 20), (0, 0, 0), -1)
+    cv2.putText(canvas, label, (4, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
     return canvas

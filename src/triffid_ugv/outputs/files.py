@@ -4,7 +4,7 @@
     outputs/<session>/objects.geojson     the same, per session
     outputs/<session>/observations.jsonl  one JSON line per processed frame: pose + geolocated detections
     outputs/<session>/frames/*.jpg        annotated frames (rate-limited)
-    outputs/<session>/thermal/*.jpg       optional FLIR snapshots (debug only)
+    outputs/<session>/debug/...           with debug.enabled: raw inputs + overlays per frame (outputs/debug.py)
     outputs/<session>/run.json            resolved config, model/tracker metadata, counters
 """
 from __future__ import annotations
@@ -28,16 +28,14 @@ def atomic_write_json(path: Path, data) -> None:
 
 
 class SessionWriter:
-    def __init__(self, outputs_dir: str | Path, session: str, frames_period_s: float = 1.0,
-                 thermal_period_s: float = 1.0):
+    def __init__(self, outputs_dir: str | Path, session: str, frames_period_s: float = 1.0):
         self.root = Path(outputs_dir)
         self.dir = self.root / session
         self.dir.mkdir(parents=True, exist_ok=True)
         self.session = session
         self._observations = None
         self._frames_period_ns = int(frames_period_s * 1e9)
-        self._thermal_period_ns = int(thermal_period_s * 1e9)
-        self._last_frame_ns = self._last_thermal_ns = None
+        self._last_frame_ns = None
 
     def write_run(self, info: dict) -> None:
         atomic_write_json(self.dir / 'run.json', info)
@@ -67,14 +65,6 @@ class SessionWriter:
         path.parent.mkdir(exist_ok=True)
         cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, 90])
         return str(path.relative_to(self.dir))
-
-    def save_thermal(self, image: np.ndarray, stamp_ns: int) -> None:
-        if not self._due(self._last_thermal_ns, stamp_ns, self._thermal_period_ns):
-            return
-        self._last_thermal_ns = stamp_ns
-        path = self.dir / 'thermal' / self._stamp_name(stamp_ns)
-        path.parent.mkdir(exist_ok=True)
-        cv2.imwrite(str(path), image)
 
     def close(self) -> None:
         if self._observations is not None:

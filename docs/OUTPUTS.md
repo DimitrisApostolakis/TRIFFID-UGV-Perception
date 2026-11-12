@@ -6,9 +6,9 @@
 |---|---|
 | `ugv_detections.geojson` | confirmed objects of the newest run, rewritten every `outputs.flush_period_s` |
 | `<session>/objects.geojson` | the same, kept per run (`<session>` = UTC start time) |
-| `<session>/observations.jsonl` | one line per processed frame: stamp, pose (and sources), every detection with box, score, body-frame position, range, lat/lon, `object_id` |
+| `<session>/observations.jsonl` | one line per processed frame: stamp, pose (and sources), timings, every detection with box, score, body-frame position, range, lat/lon, `object_id`, appearance `track`, and `debug_files` when a debug set was recorded |
 | `<session>/frames/*.jpg` | annotated frames: mask, class, score, object number, range |
-| `<session>/thermal/*.jpg` | FLIR snapshots, only with `outputs.thermal.enabled` |
+| `<session>/debug/{rgb,depth,depth_color,thermal,overlay}/` | only with `debug.enabled`: every processed frame's inputs and overlay, same file stem per set (see [DEBUG.md](DEBUG.md)) |
 | `<session>/run.json` | resolved config, detector/tracker metadata (checkpoint hashes, classes, support counts) |
 
 ## GeoJSON feature

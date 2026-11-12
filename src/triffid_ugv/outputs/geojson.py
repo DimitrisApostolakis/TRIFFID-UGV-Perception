@@ -40,7 +40,7 @@ def object_geometry(obj: WorldObject, frame: LocalFrame, geometry: GeometryConfi
 
 
 def object_feature(obj: WorldObject, frame: LocalFrame, geometry: GeometryConfig, source: str = 'ugv',
-                   tracker: str = 'geo') -> dict:
+                   tracker: str = 'sift') -> dict:
     name = obj.class_name
     style = class_style(name)
     geom = object_geometry(obj, frame, geometry)

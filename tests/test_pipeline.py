@@ -57,3 +57,21 @@ def test_missing_depth_is_not_localized(config):
     pipeline = Pipeline(config, DummyDetector('citizen'), session='nodepth')
     report = pipeline.process(frame(0, depth_value=0.0))
     assert report.detections == 1 and report.localized == 0 and report.geolocated == 0
+
+
+def test_sift_hints_reach_the_observation_log(config):
+    from triffid_ugv.tracking.sift import SiftTracker
+    writer = SessionWriter(config.paths.outputs, 'sift')
+    appearance = SiftTracker(config.tracker.sift, config.tracker.class_groups)
+    pipeline = Pipeline(config, DummyDetector('fire truck'), appearance=appearance, writer=writer, session='sift')
+    rng = np.random.default_rng(3)
+    texture = np.repeat(np.repeat(rng.integers(0, 256, (80, 107, 3), dtype=np.uint8), 6, 0), 6, 1)[:480, :640]
+    for t in range(2):
+        f = frame(t)
+        f.bgr = np.ascontiguousarray(texture)
+        pipeline.process(f)
+    pipeline.close()
+    records = [json.loads(line) for line in (writer.dir / 'observations.jsonl').read_text().splitlines()]
+    tracks = [r['detections'][0].get('track') for r in records]
+    assert tracks[0] and tracks[0] == tracks[1] and tracks[0].startswith('sift:')
+    assert 'appearance' in records[0]['timing_s']

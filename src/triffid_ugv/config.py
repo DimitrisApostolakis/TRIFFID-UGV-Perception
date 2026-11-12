@@ -2,7 +2,7 @@
 
 Every tunable lives here; modules receive the section they need instead of reading globals.
 Override any value with ``--set section.key=value`` (YAML syntax for the value), e.g.
-``--set detector.backend=sam3`` or ``--set topics.rgb=/camera/color/image_raw``.
+``--set tracker.backend=masa`` or ``--set topics.rgb=/camera/color/image_raw``.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class TopicsConfig:
     status: str = '/b2/ugv_status'        # ugv_status_interfaces/UnitreeStatus ('' disables)
     fix: str = '/fix'                     # sensor_msgs/NavSatFix ('' disables)
     heading: str = '/b2/nicla/magnetometer/heading_broadcasted'   # std_msgs/Float32, degrees ('' disables)
-    thermal: str = '/b2/camera_flir/image_raw_broadcasted'        # used only when outputs.thermal.enabled
+    thermal: str = '/b2/camera_flir/image_raw_broadcasted'        # subscribed only for debug.thermal
     image_qos: str = 'reliable'           # camera topics; small topics always use best_effort (accepts any publisher)
 
 
@@ -48,7 +48,7 @@ class CameraConfig:
     # The entry matching the image size is used; another size with the same aspect ratio is rescaled.
     calibrations: dict[str, list[float]] = field(default_factory=lambda: {
         '1280x720': [910.3245849609375, 910.1997680664062, 645.7958984375, 366.5615539550781],  # robot CameraInfo
-        '640x480': [606.883056640625, 606.7998657226562, 323.86395263671875, 244.37435913085938]})  # live branch
+        '640x480': [606.883056640625, 606.7998657226562, 323.86395263671875, 244.37435913085938]})  # live broadcast
     depth_scale: float = 0.001            # 16UC1 depth units -> metres
     min_depth_m: float = 0.3
     max_depth_m: float = 20.0
@@ -71,29 +71,14 @@ class YoloeConfig:
 
 
 @dataclass
-class Sam3Config:
-    repo: str = '/opt/fss-sam3'           # FSS-SAM3 source checkout (provided by the Docker image)
-    checkpoint: str = '/models/sam3.pt'   # same files as the UAV perception image
-    bpe: str = '/models/bpe_simple_vocab_16e6.txt.gz'
-    prompt: str = 'text'                  # text: one image encoding, class names as prompts (fast)
-                                          # visual | text+visual: few-shot support collage per class (slow)
-    shots: int = 1                        # visual prompts: 1 or 5 supports per class
-    precision: str = 'bf16'               # bf16 autocast (~2x faster, as in the SAM3 examples) | fp32
-    resolution: int = 1008
-    support_ratio_1shot: float = 0.6
-    support_ratio_5shot: float = 0.3
-
-
-@dataclass
 class DetectorConfig:
-    backend: str = 'yoloe'                # yoloe | sam3 | dummy
+    backend: str = 'yoloe'                # yoloe (YOLOE-v8-L, visual prompts) | dummy (wiring tests)
     device: str = 'cuda'
-    classes: str | list[str] = 'auto'     # auto = every class with at least one support (yoloe / sam3 visual)
+    classes: str | list[str] = 'auto'     # auto = every class with at least one support in the bank
     confidence: float = 0.35              # detections below this are not localized or exported
     min_mask_px: int = 30
     max_per_frame: int = 100
     yoloe: YoloeConfig = field(default_factory=YoloeConfig)
-    sam3: Sam3Config = field(default_factory=Sam3Config)
 
 
 @dataclass
@@ -104,6 +89,19 @@ class GeoTrackerConfig:
         'building', 'destroyed building', 'road', 'dirt road', 'pavement', 'wall', 'fence',
         'green grass', 'dry grass', 'burnt grass', 'water', 'mud', 'debris', 'smoke'])
     position_alpha: float = 0.3           # weight of a new observation in the object's position (EMA)
+
+
+@dataclass
+class SiftConfig:
+    max_features: int = 200               # SIFT keypoints kept per detection
+    max_side_px: int = 320                # detection crops are downscaled to this longer side first
+    min_side_px: int = 24                 # smaller detections get no appearance identity (geo only)
+    min_keypoints: int = 12               # textureless detections below this get no appearance identity
+    ratio: float = 0.75                   # Lowe ratio test
+    min_matches: int = 10                 # verified matches needed to continue a track
+    ransac_px: float = 6.0                # homography RANSAC threshold in crop pixels; 0 = ratio test only
+    gallery_size: int = 4                 # most recent views kept per track
+    memory_s: float = 60.0                # how long a lost track can be recovered by appearance
 
 
 @dataclass
@@ -118,12 +116,14 @@ class MasaConfig:
 
 @dataclass
 class TrackerConfig:
-    backend: str = 'geo'                  # geo | masa
+    backend: str = 'sift'                 # sift (default, CPU) | masa (fallback, `masa` Docker image)
     min_hits: int = 2                     # sightings before an object is exported
     max_age_s: float = 600.0              # objects unseen this long stop being matched (they stay on the map)
     class_groups: list[list[str]] = field(default_factory=lambda: [
         ['citizen', 'first responder', 'military personnel']])
+    hint_gate_m: float = 10.0             # an appearance match is trusted only this close to its object (0 = any)
     geo: GeoTrackerConfig = field(default_factory=GeoTrackerConfig)
+    sift: SiftConfig = field(default_factory=SiftConfig)
     masa: MasaConfig = field(default_factory=MasaConfig)
 
 
@@ -163,18 +163,32 @@ class FramesConfig:
 
 
 @dataclass
-class ThermalConfig:
-    enabled: bool = False                 # optional FLIR debug snapshots; never used for detection
-    period_s: float = 1.0
-
-
-@dataclass
 class OutputsConfig:
     geojson: bool = True                  # outputs/<session>/objects.geojson, rewritten every flush
     observations: bool = True             # outputs/<session>/observations.jsonl, one line per frame
     flush_period_s: float = 5.0
     frames: FramesConfig = field(default_factory=FramesConfig)
-    thermal: ThermalConfig = field(default_factory=ThermalConfig)
+
+
+@dataclass
+class DebugConfig:
+    # Live-test recording: the inputs of every processed frame, side by side, under
+    # outputs/<session>/<folder>/{rgb,depth,depth_color,thermal,overlay}/<stamp>.<ext> (same stamp per set).
+    enabled: bool = False
+    folder: str = 'debug'                 # inside the session folder
+    period_s: float = 0.0                 # 0 = every processed frame; else at most one set per period
+    save_empty: bool = True               # also frames without detections
+    rgb: bool = True                      # colour frame as processed (JPEG)
+    depth: bool = True                    # aligned depth, lossless 16-bit PNG in millimetres
+    depth_color: bool = True              # depth colourised over [min_depth_m, depth_color_max_m] (JPEG)
+    depth_color_max_m: float = 10.0
+    thermal: bool = True                  # newest FLIR frame near the RGB stamp (subscribes to topics.thermal)
+    thermal_max_dt_s: float = 1.0         # thermal older/newer than this relative to RGB is not paired
+    overlay: bool = True                  # detections drawn: masks, boxes, class, score, object, range, pose
+    jpeg_quality: int = 90
+    queue_size: int = 8                   # pending sets for the writer thread; extra sets are dropped, never block
+    max_sets: int = 0                     # stop after this many sets (0 = unlimited)
+    min_free_gb: float = 2.0              # stop when the outputs disk has less free space
 
 
 @dataclass
@@ -201,17 +215,15 @@ class Config:
     position: PositionConfig = field(default_factory=PositionConfig)
     geometry: GeometryConfig = field(default_factory=GeometryConfig)
     outputs: OutputsConfig = field(default_factory=OutputsConfig)
+    debug: DebugConfig = field(default_factory=DebugConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
 
     def validate(self) -> 'Config':
         def choice(value, allowed, name):
             if value not in allowed:
                 raise ValueError(f'{name} must be one of {sorted(allowed)}, got {value!r}')
-        choice(self.detector.backend, {'yoloe', 'sam3', 'dummy'}, 'detector.backend')
-        choice(self.detector.sam3.prompt, {'text', 'visual', 'text+visual'}, 'detector.sam3.prompt')
-        choice(self.detector.sam3.shots, {1, 5}, 'detector.sam3.shots')
-        choice(self.detector.sam3.precision, {'bf16', 'fp32'}, 'detector.sam3.precision')
-        choice(self.tracker.backend, {'geo', 'masa'}, 'tracker.backend')
+        choice(self.detector.backend, {'yoloe', 'dummy'}, 'detector.backend')
+        choice(self.tracker.backend, {'sift', 'masa'}, 'tracker.backend')
         choice(self.camera.intrinsics, {'auto', 'camera_info', 'config'}, 'camera.intrinsics')
         choice(self.camera.extrinsics, {'auto', 'tf', 'static'}, 'camera.extrinsics')
         choice(self.topics.image_qos, {'best_effort', 'reliable'}, 'topics.image_qos')
@@ -230,6 +242,18 @@ class Config:
             raise ValueError('detector confidences must be in [0, 1]')
         if not 0 < self.tracker.geo.position_alpha <= 1:
             raise ValueError('tracker.geo.position_alpha must be in (0, 1]')
+        if not 1 <= self.debug.jpeg_quality <= 100 or self.debug.queue_size < 1 or self.debug.period_s < 0:
+            raise ValueError('debug.jpeg_quality must be 1-100, debug.queue_size >= 1, debug.period_s >= 0')
+        if not self.debug.depth_color_max_m > self.camera.min_depth_m:
+            raise ValueError('debug.depth_color_max_m must be larger than camera.min_depth_m')
+        if not self.debug.folder or Path(self.debug.folder).is_absolute() or '..' in Path(self.debug.folder).parts:
+            raise ValueError('debug.folder must be a relative folder name inside the session folder')
+        if not 0 < self.tracker.sift.ratio < 1:
+            raise ValueError('tracker.sift.ratio must be in (0, 1)')
+        if self.tracker.sift.min_matches < 4 or self.tracker.sift.gallery_size < 1:
+            raise ValueError('tracker.sift.min_matches must be at least 4 and gallery_size at least 1')
+        if self.tracker.hint_gate_m < 0:
+            raise ValueError('tracker.hint_gate_m must be >= 0')
         if self.tracker.min_hits < 1:
             raise ValueError('tracker.min_hits must be at least 1')
         for size, values in self.camera.calibrations.items():

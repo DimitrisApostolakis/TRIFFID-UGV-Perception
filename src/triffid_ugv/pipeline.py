@@ -32,6 +32,7 @@ class Frame:
     optical_to_body: np.ndarray          # 4x4 body-from-optical transform
     pose: Pose | None = None
     pose_reason: str = ''
+    thermal: np.ndarray | None = None    # BGR FLIR frame paired with this RGB stamp (debug recording only)
 
 
 @dataclass
@@ -49,17 +50,16 @@ def session_name() -> str:
 
 
 class Pipeline:
-    def __init__(self, config: Config, detector, masa=None, writer=None, api=None, session: str | None = None):
-        self.config, self.detector, self.masa = config, detector, masa
-        self.writer, self.api = writer, api
+    def __init__(self, config: Config, detector, appearance=None, writer=None, api=None, session: str | None = None,
+                 debug=None):
+        # appearance: image-space tracker (SiftTracker or MasaTracker) whose IDs are hints for the map
+        # debug: DebugRecorder (outputs/debug.py) when debug.enabled
+        self.config, self.detector, self.appearance = config, detector, appearance
+        self.writer, self.api, self.debug = writer, api, debug
         self.session = session or session_name()
         self.map = ObjectMap(config.tracker, config.geometry, id_prefix=f'ugv-{self.session}')
         self.local: LocalFrame | None = None
         self.frames = self.geolocated_frames = 0
-        self._masa_groups = None
-        if masa is not None:
-            from .tracking.masa import masa_label_groups
-            self._masa_groups = masa_label_groups(config.tracker.class_groups)
 
     # ---- per frame ----------------------------------------------------------------------------
     def process(self, frame: Frame) -> FrameReport:
@@ -75,15 +75,17 @@ class Pipeline:
         t_detect = time.perf_counter()
         detections = result.detections
         hints: dict[int, str] = {}
-        if self.masa is not None:
-            candidates = result.candidates if result.candidates is not None else detections
-            tracked = self.masa.update(candidates, frame.bgr, frame.stamp_ns, self._masa_groups)
+        if self.appearance is not None:
+            candidates = detections
+            if getattr(self.appearance, 'uses_candidates', False) and result.candidates is not None:
+                candidates = result.candidates
+            tracked = self.appearance.update(candidates, frame.bgr, frame.stamp_ns)
             position = {id(d): i for i, d in enumerate(candidates)}
             by_candidate = {i: track for i, track in tracked}
             hints = {k: by_candidate[position[id(d)]] for k, d in enumerate(detections)
                      if id(d) in position and position[id(d)] in by_candidate}
 
-        t_masa = time.perf_counter()
+        t_appearance = time.perf_counter()
         pose = frame.pose
         if pose is not None and self.local is None:
             self.local = LocalFrame(pose.lat, pose.lon, pose.alt)
@@ -129,12 +131,24 @@ class Pipeline:
         seconds = time.perf_counter() - started
         report = FrameReport(frame.stamp_ns, len(detections), sum(r.get('localized', False) for r in records),
                              len(observations), seconds, '' if pose else frame.pose_reason)
+        annotated = None
+
+        def overlay():
+            nonlocal annotated
+            if annotated is None:
+                header = f'{iso(frame.stamp_ns)}  ' + (f'{pose.lat:.6f},{pose.lon:.6f} hdg {np.degrees(pose.heading_rad):.0f}'
+                                                       if pose else f'NO POSE: {frame.pose_reason}')
+                annotated = draw(frame.bgr, drawn, header)
+            return annotated
+
+        debug_files = None
+        if self.debug is not None and self.debug.due(frame.stamp_ns, bool(detections)):
+            debug_files = self.debug.submit(frame.stamp_ns, frame.bgr, depth,
+                                            overlay() if self.debug.wants_overlay else None, frame.thermal)
         if self.writer is not None:
             image_file = None
             if self.config.outputs.frames.enabled and (detections or self.config.outputs.frames.save_empty):
-                header = f'{iso(frame.stamp_ns)}  ' + (f'{pose.lat:.6f},{pose.lon:.6f} hdg {np.degrees(pose.heading_rad):.0f}'
-                                                       if pose else f'NO POSE: {frame.pose_reason}')
-                image_file = self.writer.save_frame(draw(frame.bgr, drawn, header), frame.stamp_ns)
+                image_file = self.writer.save_frame(overlay(), frame.stamp_ns)
             if self.config.outputs.observations:
                 self.writer.append_observation(dict(
                     stamp_ns=frame.stamp_ns, time=iso(frame.stamp_ns), processing_s=round(seconds, 3),
@@ -143,9 +157,9 @@ class Pipeline:
                                                         position_source=pose.position_source,
                                                         heading_source=pose.heading_source),
                     pose_missing=frame.pose_reason if pose is None else None,
-                    intrinsics=intr.source, image_file=image_file,
-                    timing_s=dict(detect=round(t_detect - started, 3), masa=round(t_masa - t_detect, 3),
-                                  localize=round(t_localize - t_masa, 3),
+                    intrinsics=intr.source, image_file=image_file, debug_files=debug_files,
+                    timing_s=dict(detect=round(t_detect - started, 3), appearance=round(t_appearance - t_detect, 3),
+                                  localize=round(t_localize - t_appearance, 3),
                                   track=round(t_track - t_localize, 3), outputs=round(time.perf_counter() - t_track, 3)),
                     detections=records))
         return report
@@ -178,5 +192,7 @@ class Pipeline:
         self.upload()
         if self.api is not None:
             self.api.close()
+        if self.debug is not None:
+            self.debug.close()
         if self.writer is not None:
             self.writer.close()
